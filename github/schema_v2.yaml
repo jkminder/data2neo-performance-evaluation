@@ -1,0 +1,42 @@
+ENTITY("commits"):
+  NODE("Commit") commit:
+    - hash = commits.hash
+    - no_of_modifications = commits.no_of_modifications
+    - commit_message = commits.commit_message
+    - merge = commits.merge
+    - date = DATETIME(commits.author_date, "%Y-%m-%d %H:%M:%S")
+
+  RELATION(MATCH("Commit", hash=commits.parents), "CHILD", commit):
+
+  NODE("Author") author:
+    + id = commits.author_id
+
+  RELATION(author, "AUTHORED", commit):
+
+# ENTITY("productivity"):
+#   NODE("File") file:
+#     + path = productivity.new_path
+
+#   RELATION(MATCH("Commit", hash=productivity.commit_hash), "MODIFIED", file):
+#     - events = productivity.events
+#     - levenshtein_dist = productivity.levenshtein_dist
+  
+ENTITY("edits"):
+  NODE("File") file:
+    + path = SELECT_PATH(edits.path)
+
+  # IF_RENAME(MERGE_RELATIONS(RELATION(MATCH("File", path=edits.old_path), "RENAMED_TO", file))):
+  #   - commit = edits.commit_hash
+
+  # # IF_NOT_ONLY_RENAMED(RELATION(MATCH("Commit", hash=edits.commit_hash), "FILE_RENAMING", file)):
+  # #   - levenshtein_dist = edits.levenshtein_dist
+
+  # RELATION(MATCH("Commit", hash=edits.commit_hash), CAPS(edits.edit_type), file):
+  #   - pre_starting_line_no = edits.pre_starting_line_no
+  #   - levenshtein_dist = edits.levenshtein_dist
+  #   - post_starting_line_no = edits.post_starting_line_no
+  #   - pre_starting_line_no = edits.pre_starting_line_no
+  #   - post_starting_line_no = edits.post_starting_line_no
+  #   - pre_text = edits.pre_text
+  #   - post_text = edits.post_text
+  

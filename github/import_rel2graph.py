@@ -10,10 +10,11 @@ from multiprocessing import Process, freeze_support, Event
 
 from rel2graph import Resource, ResourceIterator
 from rel2graph.relational_modules.pandas import PandasDataframeIterator 
-from rel2graph import IteratorIterator, Converter, Attribute, register_attribute_postprocessor, register_subgraph_preprocessor
+from rel2graph import IteratorIterator, Converter, Attribute, register_attribute_postprocessor, register_subgraph_preprocessor, register_attribute_preprocessor
 from rel2graph.common_modules import DATETIME
 from rel2graph.utils import load_file
 from py2neo import Graph
+from rel2graph.py2neo_extensions import GraphWithParallelRelations, MERGE_RELATIONS
 
 logger = logging.getLogger(__name__)
 
@@ -151,8 +152,32 @@ def INT(attribute):
         return Attribute(attribute.key, -1) # handle null values
     return Attribute(attribute.key, int(attribute.value))
 
-database = "/Users/julian/Repositories/rel2graph-performance-evaluation/data/github/ansible__ansible__2020-06-11_06-06-22.db"
-# database = "/Users/julian/Repositories/rel2graph-performance-evaluation/data/github/airbnb__enzyme__2020-06-11_01-31-34.db"
+@register_subgraph_preprocessor
+def IF_RENAME(resource):
+    if resource["old_path"] != resource["new_path"] and not resource["new_path"] is None and resource["old_path"] is not None:
+        return resource
+    return None
+
+@register_attribute_postprocessor
+def CAPS(attribute):
+    return Attribute(attribute.key, attribute.value.upper())
+
+@register_attribute_preprocessor
+def SELECT_PATH(resource):
+    if resource["new_path"] is None:
+        resource["path"] = resource["old_path"]
+    else:
+        resource["path"] = resource["new_path"]
+    return resource
+
+@register_subgraph_preprocessor
+def IF_NOT_ONLY_RENAMED(resource):
+    if resource["old_path"] != resource["new_path"] and not resource["new_path"] is None and resource["edit_type"] != "file_renaming":
+        return resource
+    return None
+
+#database = "/Users/julian/Repositories/rel2graph-performance-evaluation/data/github/ansible__ansible__2020-06-11_06-06-22.db"
+database = "/Users/julian/Repositories/rel2graph-performance-evaluation/data/github/airbnb__enzyme__2020-06-11_01-31-34.db"
 
 def wait_for_other(events, pos):
     events[pos].set()
@@ -161,45 +186,30 @@ def wait_for_other(events, pos):
             events[i].wait()
 
 def run(table, pos, status_events):
-    graph = Graph(scheme="bolt", host="localhost", port=7687,  auth=('neo4j', 'password')) 
+    graph = GraphWithParallelRelations(scheme="bolt", host="localhost", port=7687,  auth=('neo4j', 'password')) 
 
     # Create Iterator
-    iterator = SQLiteIterator(database, [table], primary_keys={"commits": ["hash"], "productivity": ["commit_hash", "new_path"]})
+    iterator = SQLiteIterator(database, [table], primary_keys={"commits": ["hash"], "productivity": ["commit_hash", "new_path"], "edits": ["commit_hash", "new_path", "pre_starting_line_no"]})
 
     # Create converter instance with schema, the final iterator and the graph
-    converter = Converter(load_file("github/schema.yaml"), iterator, graph, num_workers=10)
-    
+    converter = Converter(load_file("github/schema_v2.yaml"), iterator, graph, num_workers=10)
+    converter._set_relation_wait_function(lambda: wait_for_other(status_events, pos))
     # Start the conversion
-    converter(lambda total: tqdm(total=total, desc=table, position=pos), relations_wait_function=lambda: wait_for_other(status_events, pos))
+    converter(lambda total: tqdm(total=total, desc=table, position=pos))
 
-
-
-
-
-# # Create Iterator
-# tables = ["commits", "productivity"]
-# iterator = SQLiteIterator("/Users/julian/Repositories/rel2graph-performance-evaluation/data/github/airbnb__enzyme__2020-06-11_01-31-34.db", tables, primary_keys={"commits": ["hash"], "productivity": ["commit_hash", "new_path"]})
-
-# # Create converter instance with schema, the final iterator and the graph
-# converter = Converter(load_file("github/schema.yaml"), iterator, graph, num_workers=10)
-# # Start the conversion
-# converter(tqdm)
-
-from functools import partial
 
 if __name__ == '__main__':
     freeze_support()
-    
     # Create a connection to the neo4j graph with the py2neo Graph object
     graph = Graph(scheme="bolt", host="localhost", port=7687,  auth=('neo4j', 'password')) 
+    #graph.schema.create_index("Commit", "hash")
     graph.delete_all()
 
     status_events = [Event() for _ in range(2)]
 
-
     # Create a new process for each table as deamon processes
     processes = []
-    for i, table in enumerate(["commits", "productivity"]):
+    for i, table in enumerate(["commits", "edits"]):
         p = Process(target=run, args=(table, i, status_events), daemon=True)
         p.start()
         processes.append(p)
