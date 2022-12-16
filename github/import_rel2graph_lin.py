@@ -183,48 +183,41 @@ def IF_NOT_ONLY_RENAMED(resource):
         return resource
     return None
 
-database = "/data/julian/rel2graph-performance-evaluation/data/github/ansible__ansible__2020-06-11_06-06-22.db"
-#database = "/data/julian/rel2graph-performance-evaluation/data/github/openshift__origin__2020-06-12_19-40-32.db"
-
-def wait_for_other(events, pos):
-    events[pos].set()
-    for i in range(len(events)):
-        if i != pos:
-            events[i].wait()
-
 def run(table, pos, status_events):
-    graph = GraphWithParallelRelations(scheme="bolt", host="localhost", port=7687,  auth=('neo4j', 'password')) 
+    graph = Graph(scheme="bolt", host="localhost", port=7687,  auth=('neo4j', 'password')) 
 
     # Create Iterator
-    iterator = SQLiteIterator(database, [table], primary_keys={"commits": ["hash"], "productivity": ["commit_hash", "new_path"], "edits": ["commit_hash", "new_path", "pre_starting_line_no"]})
+    iterator = SQLiteIterator(database, [table], primary_keys={"commits": ["hash"], "productivity": ["commit_hash", "new_path"]})
 
     # Create converter instance with schema, the final iterator and the graph
-    converter = Converter(load_file("github/schema_v2.yaml"), iterator, graph, num_workers=10)
-    converter._set_relation_wait_function(lambda: wait_for_other(status_events, pos))
+    converter = Converter(load_file("github/schema copy.yaml"), iterator, graph, num_workers=10)
+    converter._set_relation_wait_function = lambda: wait_for_other(status_events, pos)
     # Start the conversion
     converter(lambda total: tqdm(total=total, desc=table, position=pos))
 
 
+database = "/data/julian/rel2graph-performance-evaluation/data/github/ansible__ansible__2020-06-11_06-06-22.db"
+
+
+
+from functools import partial
+
 if __name__ == '__main__':
     freeze_support()
+    
     # Create a connection to the neo4j graph with the py2neo Graph object
     graph = Graph(scheme="bolt", host="localhost", port=7687,  auth=('neo4j', 'password')) 
+    graph.delete_all()
 
     # Unique constraints
     graph.run("CREATE CONSTRAINT Commit_hash_unique IF NOT EXISTS FOR (n:Commit) REQUIRE n.hash IS UNIQUE")
     graph.run("CREATE CONSTRAINT File_path_unique IF NOT EXISTS FOR (n:File) REQUIRE n.path IS UNIQUE")
     
-    graph.delete_all()
+    # # Create Iterator
+    tables = ["commits", "edits"]
+    iterator = SQLiteIterator(database, tables, primary_keys={"commits": ["hash"], "productivity": ["commit_hash", "new_path"], "edits": ["commit_hash", "new_path", "pre_starting_line_no"]})
 
-    status_events = [Event() for _ in range(2)]
-
-    # Create a new process for each table as deamon processes
-    processes = []
-    for i, table in enumerate(["commits", "edits"]):
-        p = Process(target=run, args=(table, i, status_events), daemon=True)
-        p.start()
-        processes.append(p)
-
-    # Wait for all processes to finish
-    for p in processes:
-        p.join()
+    # Create converter instance with schema, the final iterator and the graph
+    converter = Converter(load_file("github/schema_v2_lin.yaml"), iterator, graph, num_workers=10)
+    # Start the conversion
+    converter(tqdm)
