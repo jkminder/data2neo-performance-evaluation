@@ -1,6 +1,6 @@
-# Performance measurements for Data2Neo
+# Performance evaluation for Data2Neo
 
-This repository holds the code for the performance evaluation of the Data2Neo library. As baseline we measure import time for direct import with neo4j's CYPHER and LOAD CSV.
+This repository holds the code for the performance evaluation of the [Data2Neo library](https://github.com/jkminder/data2neo). As baseline we measure import time for direct import with neo4j's CYPHER and LOAD CSV.
 
 # Reproducability Instructions
 
