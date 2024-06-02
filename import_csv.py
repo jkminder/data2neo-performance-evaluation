@@ -65,4 +65,3 @@ if __name__ == '__main__':
         f.write(str(end-start_import))
 
     print(f"Time: {end - start}")
-    os.remove("run.cypher")

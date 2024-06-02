@@ -17,3 +17,5 @@ bash run.sh
 ```
 
 This will repeat each experiment 5 times and create a folder `measurements` with one file per run. Each file contains the seconds that the configuration needed for the conversion. 
+
+Use the notebook `analyse_results.ipynb` to collect the results.
